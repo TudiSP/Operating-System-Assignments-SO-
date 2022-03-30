@@ -7,8 +7,13 @@
 #ifndef SO_STDIO_H
 #define SO_STDIO_H
 
+#include <errno.h>
 #if defined(__linux__)
 #define FUNC_DECL_PREFIX
+#include <sys/types.h>	/* open */
+#include <sys/stat.h>	/* open */
+#include <fcntl.h>	/* O_RDWR, O_CREAT, O_TRUNC, O_WRONLY */
+#include <unistd.h>
 #elif defined(_WIN32)
 #include <Windows.h>
 
@@ -30,7 +35,14 @@
 
 #define SO_EOF (-1)
 
-struct _so_file;
+#define BUF_SIZE 4096
+
+struct _so_file {
+    char *buffer;
+    char *cursor;
+    unsigned char fd;
+    unsigned char flag;
+};
 
 typedef struct _so_file SO_FILE;
 
