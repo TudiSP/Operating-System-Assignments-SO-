@@ -74,6 +74,8 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 	file->stdin_buffer = malloc(BUF_SIZE * sizeof(char));
 	file->stdout_buffer = malloc(BUF_SIZE * sizeof(char));
 	file->stdin_buf_cursor = file->stdout_buf_cursor = file->stdin_buflen = 0;
+	file->cursor = 0;
+	file->err_flag = 0;
 	file->fd = fd;
 	return file;
 }
@@ -86,6 +88,7 @@ FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream) {
 	rc = close(stream->fd);
 	if (rc < 0) {
 		perror("File close error");
+		stream->err_flag = 1;
 		return SO_EOF;
 	}
 	free(stream);
@@ -100,8 +103,10 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 			return 0;
 		} else if (rc < 0) {
 			perror("File read error");
+			stream->err_flag = 1;
 			return SO_EOF;
 		}
+		stream->cursor += rc;
 		stream->stdin_buflen = rc;
 		stream->stdin_buf_cursor = 0;
 	}
@@ -111,11 +116,14 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
 	int rc;
 	if (stream->stdout_buf_cursor == BUF_SIZE - 1 || ((char) c == '\n')) {
-		/* so_fflush(stream);*/
+		/* rc = so_fflush(stream);
+		*/
 	}
 	rc = write(stream->fd, stream->stdout_buffer + stream->stdout_buf_cursor, 1);
+	stream->cursor += rc;
 	if (rc < 0) {
 		perror("File write error (so_fputc)");
+		stream->err_flag = 1;
 		return SO_EOF;
 	}
 
@@ -134,7 +142,7 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 			return nr_bytes_read;
 		} else if (read_character < 0) {
 			perror("File read error (so_fread)");
-			/* EOF or ERROR */
+			stream->err_flag = 1;
 			return SO_EOF;
 		}
 		memcpy(ptr + nr_bytes_read, &read_character, 1);
@@ -155,10 +163,77 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 		status = so_fputc(write_character, stream);
 		if (status < 0) {
 			perror("File read error (so_fread)");
+			stream->err_flag = 1;
 			return SO_EOF;
 		}
 		nr_bytes_written++;
 	}
 	
 	return nr_bytes_written;
+}
+
+FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence) {
+	off_t offset;
+	#if defined(__linux__)
+	offset = lseek(stream->fd, offset, whence);
+	#elif defined(_WIN32)
+
+	#endif
+
+	if (offset < 0) {
+		#if defined(__linux__)
+		perror("lseek error");
+		stream->err_flag = 1;
+		#elif defined(_WIN32)
+
+		#endif
+		
+		return SO_EOF;
+	}
+	stream->cursor = offset;
+	return offset;
+}
+
+FUNC_DECL_PREFIX long so_ftell(SO_FILE *stream) {
+	return stream->cursor;
+}
+
+FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream) {
+	int wc;
+
+	wc = write(stream->fd, stream->stdout_buffer, stream->stdout_buf_cursor);
+	if (wc < 0) {
+		perror("File write error");
+		stream->err_flag = 1;
+		return SO_EOF;
+	}
+
+	stream->stdout_buf_cursor = 0;
+	stream->cursor += wc;
+	return 0;
+}
+
+#if defined(__linux__)
+FUNC_DECL_PREFIX int so_fileno(SO_FILE *stream) {
+	return stream->fd;
+}
+#elif defined(_WIN32)
+FUNC_DECL_PREFIX HANDLE so_fileno(SO_FILE *stream);
+#else
+#error "Unknown platform"
+#endif
+
+FUNC_DECL_PREFIX int so_feof(SO_FILE *stream) {
+	char c;
+	int eof = read(stream->fd, &c, 1);
+	lseek(stream->fd, -1, SEEK_CUR);
+	return eof;
+}
+
+FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream) {
+	return stream->err_flag;
+}
+
+FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type) {
+	
 }
