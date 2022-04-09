@@ -114,18 +114,18 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
-	int rc;
+	int status;
 	if (stream->stdout_buf_cursor == BUF_SIZE - 1 || ((char) c == '\n')) {
-		/* rc = so_fflush(stream);
-		*/
+		status = so_fflush(stream);
 	}
-	rc = write(stream->fd, stream->stdout_buffer + stream->stdout_buf_cursor, 1);
-	stream->cursor += rc;
-	if (rc < 0) {
+	
+	if (status < 0) {
 		perror("File write error (so_fputc)");
 		stream->err_flag = 1;
 		return SO_EOF;
 	}
+	stream->stdout_buffer[stream->stdout_buf_cursor++] = (unsigned char) c;
+	stream->cursor++;
 
 	return c;
 }
@@ -235,5 +235,5 @@ FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type) {
-	
+
 }
