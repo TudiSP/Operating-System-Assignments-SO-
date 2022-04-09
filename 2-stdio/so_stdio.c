@@ -96,10 +96,11 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 	/* reached end of stdin buffer */
 	if (stream->stdin_buf_cursor == stream->stdin_buflen) {
 		int rc = read(stream->fd, stream->stdin_buffer, BUF_SIZE);
-
-		if (rc < 0) {
+		if (rc == 0) {
+			return 0;
+		} else if (rc < 0) {
 			perror("File read error");
-			return -1;
+			return SO_EOF;
 		}
 		stream->stdin_buflen = rc;
 		stream->stdin_buf_cursor = 0;
@@ -115,7 +116,7 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
 	rc = write(stream->fd, stream->stdout_buffer + stream->stdout_buf_cursor, 1);
 	if (rc < 0) {
 		perror("File write error (so_fputc)");
-		return -1;
+		return SO_EOF;
 	}
 
 	return c;
@@ -123,21 +124,41 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
 
 FUNC_DECL_PREFIX
 size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
-	size_t nr_bytes;
+	size_t nr_bytes_read = 0;
 	size_t total_bytes = size * nmemb;
 	unsigned char read_character;
-	int cr;
-	for (nr_bytes = 0; nr_bytes < total_bytes; nr_bytes++) {
+
+	while (nr_bytes_read < total_bytes) {
 		read_character = (unsigned char) so_fgetc(stream);
-		if (read_character < 0) {
+		if (read_character == 0) {
+			return nr_bytes_read;
+		} else if (read_character < 0) {
 			perror("File read error (so_fread)");
-			return -1;
+			/* EOF or ERROR */
+			return SO_EOF;
 		}
-		memcpy(ptr + nr_bytes, &read_character, 1);
+		memcpy(ptr + nr_bytes_read, &read_character, 1);
+		nr_bytes_read++;
 	}
+	return nr_bytes_read;
 }
 
 FUNC_DECL_PREFIX
 size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
+	size_t nr_bytes_written = 0;
+	size_t total_bytes = size * nmemb;
+	int write_character;
+	int status;
+
+	while (nr_bytes_written < total_bytes) {
+		write_character = (int) *((unsigned char *) ptr);
+		status = so_fputc(write_character, stream);
+		if (status < 0) {
+			perror("File read error (so_fread)");
+			return SO_EOF;
+		}
+		nr_bytes_written++;
+	}
 	
+	return nr_bytes_written;
 }
