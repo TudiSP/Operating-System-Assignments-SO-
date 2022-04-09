@@ -28,6 +28,7 @@
 #endif
 
 #include <stdlib.h>
+#include <string.h>
 
 #define SEEK_SET	0	/* Seek from beginning of file.  */
 #define SEEK_CUR	1	/* Seek from current position.  */
@@ -38,10 +39,13 @@
 #define BUF_SIZE 4096
 
 struct _so_file {
-    char *buffer;
-    char *cursor;
+    char *stdin_buffer;
+    char *stdout_buffer;
     unsigned char fd;
     unsigned char flag;
+    int cursor;
+    int stdin_buf_cursor, stdout_buf_cursor;
+    int stdin_buflen;
 };
 
 typedef struct _so_file SO_FILE;
