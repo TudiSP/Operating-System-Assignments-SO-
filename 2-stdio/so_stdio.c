@@ -1,4 +1,5 @@
 #include "./util/so_stdio.h"
+#include <stdio.h>
 
 FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 	int fd;
@@ -35,13 +36,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			/* 
 			read & write mode with implicit creation and truncation
 			*/
-		fd = open(pathname, O_RDWR | O_CREAT | O_TRUNC, 644);
+		fd = open(pathname, O_RDWR | O_CREAT | O_TRUNC, 0666);
 			if (fd < 0) {
 				perror("File open error \"w+\" mode");
 				return NULL;
 			}
 		} else if (mode[1] == 0) {
-			fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC, 644);
+			fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC, 0666);
 			if (fd < 0) {
 				perror("File open error \"w\" mode");
 				return NULL;
@@ -58,13 +59,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			/* 
 			read & append mode
 			*/
-			fd = open(pathname, O_RDWR | O_CREAT | O_APPEND, 644);
+			fd = open(pathname, O_RDWR | O_CREAT | O_APPEND, 0666);
 			if (fd < 0) {
 				perror("File open error \"a+\" mode");
 				return NULL;
 			}
 		} else if (mode[1] == 0) {
-			fd = open(pathname, O_WRONLY | O_CREAT | O_APPEND, 644);
+			fd = open(pathname, O_WRONLY | O_CREAT | O_APPEND, 0666);
 			if (fd < 0) {
 				perror("File open error \"a\" mode");
 				return NULL;
@@ -84,18 +85,25 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 	SO_FILE *file = malloc(sizeof(SO_FILE));
 	file->stdin_buffer = malloc(BUF_SIZE * sizeof(char));
 	file->stdout_buffer = malloc(BUF_SIZE * sizeof(char));
-	file->stdin_buf_cursor = file->stdout_buf_cursor = file->stdin_buflen = 0;
+	file->stdin_buf_cursor = 0;
+	file->stdout_buf_cursor = 0;
+	file->stdin_buflen = 0;
 	file->cursor = 0;
-	file->err_flag = file->write_flag = file->popen_flag = 0;
+	file->err_flag = 0;
+	file->write_flag = 0;
+	file->popen_flag = 0;
 	file->fd = fd;
 	return file;
 }
 
 FUNC_DECL_PREFIX int so_fclose(SO_FILE *stream) {
 	int rc;
+	stream->write_flag = 1;
+	so_fflush(stream);
+
 	free(stream->stdin_buffer);
 	free(stream->stdout_buffer);
-
+	
 	rc = close(stream->fd);
 	if (rc < 0) {
 		perror("File close error");
@@ -110,11 +118,7 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 	/* reached end of stdin buffer */
 	if (stream->stdin_buf_cursor == stream->stdin_buflen) {
 		int rc = read(stream->fd, stream->stdin_buffer, BUF_SIZE);
-		if (rc == 0) {
-			return 0;
-		} else if (rc < 0) {
-			perror("File read error");
-			stream->err_flag = 1;
+		if (rc < 0) {
 			return SO_EOF;
 		}
 		stream->cursor += rc;
@@ -125,8 +129,8 @@ FUNC_DECL_PREFIX int so_fgetc(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
-	int status;
-	if (stream->stdout_buf_cursor == BUF_SIZE - 1 || ((char) c == '\n')) {
+	int status = 0;
+	if (stream->stdout_buf_cursor == BUF_SIZE || c == 0) {
 		status = so_fflush(stream);
 	}
 	
@@ -135,10 +139,10 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
 		stream->err_flag = 1;
 		return SO_EOF;
 	}
-	stream->stdout_buffer[stream->stdout_buf_cursor++] = (unsigned char) c;
+	stream->stdout_buffer[stream->stdout_buf_cursor] = (unsigned char) c;
 	stream->cursor++;
 	stream->write_flag = 1;
-	return c;
+	return ((int) (stream->stdout_buffer[stream->stdout_buf_cursor++]));
 }
 
 FUNC_DECL_PREFIX
@@ -149,17 +153,13 @@ size_t so_fread(void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 
 	while (nr_bytes_read < total_bytes) {
 		read_character = (unsigned char) so_fgetc(stream);
-		if (read_character == 0) {
-			return nr_bytes_read;
-		} else if (read_character < 0) {
-			perror("File read error (so_fread)");
-			stream->err_flag = 1;
+		if (read_character < 0) {
 			return SO_EOF;
 		}
 		memcpy(ptr + nr_bytes_read, &read_character, 1);
 		nr_bytes_read++;
 	}
-	return nr_bytes_read;
+	return nr_bytes_read / size;
 }
 
 FUNC_DECL_PREFIX
@@ -170,7 +170,7 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 	int status;
 
 	while (nr_bytes_written < total_bytes) {
-		write_character = (int) *((unsigned char *) ptr);
+		write_character = (int) *(((unsigned char *) ptr) + nr_bytes_written);
 		status = so_fputc(write_character, stream);
 		if (status < 0) {
 			perror("File read error (so_fread)");
@@ -180,7 +180,7 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 		nr_bytes_written++;
 	}
 	
-	return nr_bytes_written;
+	return nr_bytes_written / size;
 }
 
 FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence) {
@@ -210,7 +210,8 @@ FUNC_DECL_PREFIX long so_ftell(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream) {
-	int wc;
+	int wc = 0;
+	if (!stream->stdout_buf_cursor) return 0;
 	if (stream->write_flag) {
 		wc = write(stream->fd, stream->stdout_buffer, stream->stdout_buf_cursor);
 		if (wc < 0) {
@@ -251,10 +252,16 @@ FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type) {
+
+
+	return NULL;
+
+
+
 	SO_FILE *p_stream;
 	int pdes[2], fd;
 	char const *argvec[] = {"sh","-c", NULL, NULL};
-	argvec[3] = command;
+	argvec[2] = command;
 
 	#if defined(__linux__)
 	/* opening pipe */
@@ -316,9 +323,11 @@ FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type) {
 	p_stream->fd = fd;
 	p_stream->pid = pid;
 	return p_stream;
+
 }
 
 FUNC_DECL_PREFIX int so_pclose(SO_FILE *stream) {
+	return -1;
 	int status;
 
 	waitpid(stream->pid, &status, 0);

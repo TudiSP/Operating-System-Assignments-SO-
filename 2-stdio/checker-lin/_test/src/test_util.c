@@ -3,6 +3,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/stat.h>
+#include <errno.h>
 
 int create_file_with_contents(char *fname, unsigned char *data, int len)
 {
@@ -101,7 +102,7 @@ int file_size(char *fname)
 	FILE *f = fopen(fname, "rb");
 	long fsize;
 
-	if (!f)
+	if (!f) 
 		return -1;
 
 	fseek(f, 0, SEEK_END);
