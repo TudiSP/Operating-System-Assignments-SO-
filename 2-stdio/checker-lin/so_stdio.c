@@ -1,4 +1,4 @@
-#include "./util/so_stdio.h"
+#include "../util/so_stdio.h"
 #include <stdio.h>
 
 FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
