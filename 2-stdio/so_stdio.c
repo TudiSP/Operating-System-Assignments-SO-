@@ -14,13 +14,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			*/
 			fd = open(pathname, O_RDWR);
 			if (fd < 0) {
-				perror("File open error: \"r+\" mode");
+				perror("File open error \"r+\" mode");
 				return NULL;
 			}
 		} else {
 			fd = open(pathname, O_RDONLY);
 			if (fd < 0) {
-				perror("File open error: \"r\" mode");
+				perror("File open error \"r\" mode");
 				return NULL;
 			}
 		}
@@ -35,13 +35,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			*/
 		fd = open(pathname, O_RDWR | O_CREAT | O_TRUNC);
 			if (fd < 0) {
-				perror("File open error: \"w+\" mode");
+				perror("File open error \"w+\" mode");
 				return NULL;
 			}
 		} else {
 			fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC);
 			if (fd < 0) {
-				perror("File open error: \"w\" mode");
+				perror("File open error \"w\" mode");
 				return NULL;
 			}
 		}
@@ -56,13 +56,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			*/
 			fd = open(pathname, O_APPEND | O_CREAT | O_RDWR);
 			if (fd < 0) {
-				perror("File open error: \"a+\" mode");
+				perror("File open error \"a+\" mode");
 				return NULL;
 			}
 		} else {
 			fd = open(pathname, O_APPEND | O_CREAT);
 			if (fd < 0) {
-				perror("File open error: \"a\" mode");
+				perror("File open error \"a\" mode");
 				return NULL;
 			}
 		}
@@ -70,12 +70,13 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 	#elif defined(_WIN32)
 
 	#endif
+
 	SO_FILE *file = malloc(sizeof(SO_FILE));
 	file->stdin_buffer = malloc(BUF_SIZE * sizeof(char));
 	file->stdout_buffer = malloc(BUF_SIZE * sizeof(char));
 	file->stdin_buf_cursor = file->stdout_buf_cursor = file->stdin_buflen = 0;
 	file->cursor = 0;
-	file->err_flag = 0;
+	file->err_flag = file->write_flag = file->popen_flag = 0;
 	file->fd = fd;
 	return file;
 }
@@ -126,7 +127,7 @@ FUNC_DECL_PREFIX int so_fputc(int c, SO_FILE *stream) {
 	}
 	stream->stdout_buffer[stream->stdout_buf_cursor++] = (unsigned char) c;
 	stream->cursor++;
-
+	stream->write_flag = 1;
 	return c;
 }
 
@@ -173,14 +174,14 @@ size_t so_fwrite(const void *ptr, size_t size, size_t nmemb, SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence) {
-	off_t offset;
+	off_t off_result;
 	#if defined(__linux__)
-	offset = lseek(stream->fd, offset, whence);
+	off_result = lseek(stream->fd, offset, whence);
 	#elif defined(_WIN32)
 
 	#endif
 
-	if (offset < 0) {
+	if (off_result < 0) {
 		#if defined(__linux__)
 		perror("lseek error");
 		stream->err_flag = 1;
@@ -190,8 +191,8 @@ FUNC_DECL_PREFIX int so_fseek(SO_FILE *stream, long offset, int whence) {
 		
 		return SO_EOF;
 	}
-	stream->cursor = offset;
-	return offset;
+	stream->cursor = off_result;
+	return 0;
 }
 
 FUNC_DECL_PREFIX long so_ftell(SO_FILE *stream) {
@@ -200,10 +201,15 @@ FUNC_DECL_PREFIX long so_ftell(SO_FILE *stream) {
 
 FUNC_DECL_PREFIX int so_fflush(SO_FILE *stream) {
 	int wc;
-
-	wc = write(stream->fd, stream->stdout_buffer, stream->stdout_buf_cursor);
-	if (wc < 0) {
-		perror("File write error");
+	if (stream->write_flag) {
+		wc = write(stream->fd, stream->stdout_buffer, stream->stdout_buf_cursor);
+		if (wc < 0) {
+			perror("File write error");
+			stream->err_flag = 1;
+			return SO_EOF;
+		}
+	} else {
+		perror("No prior write operations executed to justify flushing");
 		stream->err_flag = 1;
 		return SO_EOF;
 	}
@@ -235,5 +241,78 @@ FUNC_DECL_PREFIX int so_ferror(SO_FILE *stream) {
 }
 
 FUNC_DECL_PREFIX SO_FILE *so_popen(const char *command, const char *type) {
+	SO_FILE *p_stream;
+	int pdes[2], fd;
+	char const *argvec[] = {"sh","-c", NULL, NULL};
+	argvec[3] = command;
 
+	#if defined(__linux__)
+	/* opening pipe */
+	int status = pipe(pdes);
+	if (status < 0) {
+		perror("Piping error (so_popen)");
+		return NULL;
+	}
+
+
+	pid_t pid;
+	pid = fork();
+	
+
+	switch (pid) {
+	case -1:
+		/* error forking */
+		/* closing pipes */
+		close(pdes[0]);
+		close(pdes[1]);
+		perror("Forking error (so_popen)");
+		return NULL;
+	case 0:
+		/* child process */
+		if (type[0] == 'r') {
+			close(pdes[0]);
+			/* redirecting output */
+			dup2(pdes[1], STDOUT_FILENO);
+		} else {
+			close(pdes[1]);
+			/* redirecting input */
+			dup2(pdes[0], STDIN_FILENO);
+		}
+
+		execvp("/bin/sh", (char *const *) argvec);
+	}
+
+	if (type[0] == 'r') {
+		close(pdes[1]);
+		fd = pdes[0];
+	} else {
+		close(pdes[0]);
+		fd = pdes[1];
+	}
+	
+	
+	#elif defined(_WIN32)
+	
+	#else
+	#error "Unknown platform"
+	#endif
+	
+	p_stream = malloc(sizeof(SO_FILE));
+	p_stream->stdin_buffer = malloc(BUF_SIZE * sizeof(char));
+	p_stream->stdout_buffer = malloc(BUF_SIZE * sizeof(char));
+	p_stream->stdin_buf_cursor = p_stream->stdout_buf_cursor = p_stream->stdin_buflen = 0;
+	p_stream->cursor = 0;
+	p_stream->err_flag = p_stream->write_flag = p_stream->popen_flag = 0;
+	p_stream->fd = fd;
+	p_stream->pid = pid;
+	return p_stream;
+}
+
+FUNC_DECL_PREFIX int so_pclose(SO_FILE *stream) {
+	int status;
+
+	waitpid(stream->pid, &status, 0);
+	so_fclose(stream);
+	
+	return status;
 }

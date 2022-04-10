@@ -42,9 +42,10 @@ struct _so_file {
     char *stdin_buffer;
     char *stdout_buffer;
     unsigned char fd;
-    unsigned char err_flag;
+    unsigned char err_flag, write_flag, popen_flag;
     int stdin_buf_cursor, stdout_buf_cursor;
     int stdin_buflen;
+    pid_t pid;
     off_t cursor;
 };
 

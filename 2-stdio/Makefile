@@ -1,5 +1,5 @@
 CC = gcc
-exec = so_stdio.so
+exec = libso_stdio.so
 deps = ./utils/so_stdio.h
 obj = so_stdio.o 
 CFLAGS = -fPIC -Wall -std=c89
