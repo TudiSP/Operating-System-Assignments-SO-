@@ -17,15 +17,17 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 				perror("File open error \"r+\" mode");
 				return NULL;
 			}
-		} else {
+		} else if (mode[1] == 0) {
 			fd = open(pathname, O_RDONLY);
 			if (fd < 0) {
 				perror("File open error \"r\" mode");
 				return NULL;
-			}
+			} 
+		} else {
+			perror("Invalid arg");
+			return NULL;
 		}
-	}
-	if (mode[0] == 'w') {
+	} else if (mode[0] == 'w') {
 		/* 
 		write only mode with implicit creation and truncation
 		*/
@@ -33,20 +35,22 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			/* 
 			read & write mode with implicit creation and truncation
 			*/
-		fd = open(pathname, O_RDWR | O_CREAT | O_TRUNC);
+		fd = open(pathname, O_RDWR | O_CREAT | O_TRUNC, 644);
 			if (fd < 0) {
 				perror("File open error \"w+\" mode");
 				return NULL;
 			}
-		} else {
-			fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC);
+		} else if (mode[1] == 0) {
+			fd = open(pathname, O_WRONLY | O_CREAT | O_TRUNC, 644);
 			if (fd < 0) {
 				perror("File open error \"w\" mode");
 				return NULL;
-			}
+			} 
+		} else {
+			perror("Invalid arg");
+			return NULL;
 		}
-	}
-	if (mode[0] == 'a') {
+	} else if (mode[0] == 'a') {
 		/* 
 		append mode
 		*/
@@ -54,18 +58,24 @@ FUNC_DECL_PREFIX SO_FILE *so_fopen(const char *pathname, const char *mode) {
 			/* 
 			read & append mode
 			*/
-			fd = open(pathname, O_APPEND | O_CREAT | O_RDWR);
+			fd = open(pathname, O_RDWR | O_CREAT | O_APPEND, 644);
 			if (fd < 0) {
 				perror("File open error \"a+\" mode");
 				return NULL;
 			}
-		} else {
-			fd = open(pathname, O_APPEND | O_CREAT);
+		} else if (mode[1] == 0) {
+			fd = open(pathname, O_WRONLY | O_CREAT | O_APPEND, 644);
 			if (fd < 0) {
 				perror("File open error \"a\" mode");
 				return NULL;
 			}
+		} else {
+			perror("Invalid arg");
+			return NULL;
 		}
+	} else {
+		perror("Invalid arg");
+		return NULL;
 	}
 	#elif defined(_WIN32)
 
@@ -313,6 +323,6 @@ FUNC_DECL_PREFIX int so_pclose(SO_FILE *stream) {
 
 	waitpid(stream->pid, &status, 0);
 	so_fclose(stream);
-	
+
 	return status;
 }

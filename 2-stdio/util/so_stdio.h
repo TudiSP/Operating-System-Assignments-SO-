@@ -41,7 +41,7 @@
 struct _so_file {
     char *stdin_buffer;
     char *stdout_buffer;
-    unsigned char fd;
+    int fd;
     unsigned char err_flag, write_flag, popen_flag;
     int stdin_buf_cursor, stdout_buf_cursor;
     int stdin_buflen;

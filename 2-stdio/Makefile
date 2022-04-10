@@ -1,5 +1,5 @@
 CC = gcc
-exec = libso_stdio.so
+exec = ./checker-lin/libso_stdio.so
 deps = ./utils/so_stdio.h
 obj = so_stdio.o 
 CFLAGS = -fPIC -Wall -std=c89
@@ -9,6 +9,6 @@ build: $(obj)
 %.o: %.c $(deps)
 	$(CC) -c -o $@ $< $(CFLAGS)
 		
-clean: %.o
-	rm %.o $(exec)
+clean: 
+	rm $(obj) $(exec)
 
